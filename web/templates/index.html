@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>STAR Annotation</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar">
+        <div>
+          <h1>STAR Annotation</h1>
+          <p id="summary">Loading image manifest...</p>
+        </div>
+        <div class="user-chip" id="activeUser">No user</div>
+      </section>
+
+      <section class="login-panel" id="loginPanel">
+        <div class="login-grid">
+          <label>
+            User ID
+            <input id="userId" autocomplete="username" placeholder="e.g. sg2162 or gpt4v_run01">
+          </label>
+          <label>
+            User type
+            <select id="userType">
+              <option value="human">Human</option>
+              <option value="mllm">MLLM</option>
+              <option value="radiologist">Radiologist</option>
+            </select>
+          </label>
+          <label>
+            Model / notes
+            <input id="modelName" placeholder="optional">
+          </label>
+          <button id="startBtn">Start / Resume</button>
+        </div>
+        <p class="assignment-help">Radiologists are automatically assigned one blinded, balanced image group. MLLM users receive the frozen No-issue benchmark; human users receive the complete manifest.</p>
+        <div id="assignmentAvailability" class="assignment-availability"></div>
+        <div id="knownUsers" class="known-users"></div>
+      </section>
+
+      <section class="workspace hidden" id="workspace">
+        <div class="image-pane">
+          <div class="image-header">
+            <span id="imageCounter">Image</span>
+            <span id="datasetBadge">Dataset</span>
+          </div>
+          <img id="taskImage" alt="Tumor overlay">
+        </div>
+
+        <aside class="question-pane">
+          <div class="progress-wrap">
+            <div class="assignment-label hidden" id="assignmentLabel"></div>
+            <div class="phase-label hidden" id="phaseLabel"></div>
+            <div class="progress-label" id="progressLabel">0 / 0 complete</div>
+            <div class="overall-progress hidden" id="overallProgressLabel"></div>
+            <div class="progress-track">
+              <div class="progress-bar" id="progressBar"></div>
+            </div>
+          </div>
+
+          <div class="stage-tabs">
+            <span id="tabQ1">Q1</span>
+            <span id="tabQ2">Q2</span>
+            <span id="tabQSite">Q3</span>
+            <span id="tabQ4">Q4</span>
+          </div>
+
+          <div class="accuracy-panel" id="accuracyPanel">
+            <div class="accuracy-header">
+              <strong>Accuracy</strong>
+              <span id="accuracySummary">No completed images</span>
+            </div>
+            <div class="chart-row">
+              <div id="q1ChartBlock">
+                <div class="chart-label" id="q1ChartLabel">Q1 region</div>
+                <canvas id="q1Chart" width="320" height="82"></canvas>
+              </div>
+              <div id="qLymphChartBlock">
+                <div class="chart-label" id="qLymphChartLabel">Q2 lymph node</div>
+                <canvas id="qLymphChart" width="320" height="82"></canvas>
+              </div>
+              <div id="q2ChartBlock">
+                <div class="chart-label" id="q2ChartLabel">Q3 site</div>
+                <canvas id="q2Chart" width="320" height="82"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <form id="answerForm">
+            <h2 id="questionTitle"></h2>
+            <p id="questionText"></p>
+            <div id="choiceList" class="choice-list"></div>
+            <button id="submitBtn" type="submit">Submit</button>
+          </form>
+
+          <div class="status" id="status"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

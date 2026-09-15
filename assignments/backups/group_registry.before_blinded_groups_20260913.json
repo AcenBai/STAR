@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "groups": {
+    "chest_a": {
+      "specialty": "Chest",
+      "label": "Chest A",
+      "image_count": 2289,
+      "assigned_user_id": "chest_radiologist_1",
+      "assigned_at": "2026-09-12T18:52:13.559305+00:00"
+    },
+    "chest_b": {
+      "specialty": "Chest",
+      "label": "Chest B",
+      "image_count": 2289,
+      "assigned_user_id": "chest_radiologist_2",
+      "assigned_at": "2026-09-12T18:53:19.221168+00:00"
+    },
+    "abdomen_a": {
+      "specialty": "Abdomen",
+      "label": "Abdomen A",
+      "image_count": 2295,
+      "assigned_user_id": "abdomen_radiologist_1",
+      "assigned_at": "2026-09-12T18:53:57.303314+00:00"
+    },
+    "abdomen_b": {
+      "specialty": "Abdomen",
+      "label": "Abdomen B",
+      "image_count": 2294,
+      "assigned_user_id": "abdomen_radiologist_2",
+      "assigned_at": "2026-09-12T18:54:32.660388+00:00"
+    },
+    "pelvis": {
+      "specialty": "Pelvis",
+      "label": "Pelvis + Others",
+      "image_count": 1398,
+      "assigned_user_id": "pelvis_radiologist_1",
+      "assigned_at": "2026-09-12T18:55:02.038757+00:00"
+    }
+  }
+}

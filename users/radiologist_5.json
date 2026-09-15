@@ -1,0 +1,13 @@
+{
+  "user_id": "radiologist_5",
+  "user_type": "radiologist",
+  "display_name": "radiologist_5",
+  "model": "",
+  "created_at": "2026-09-14T10:06:27.249449+00:00",
+  "updated_at": "2026-09-14T10:06:27.249469+00:00",
+  "stage": "q1",
+  "current_image_id": "eay131_5f203b62b74fdaf9",
+  "current_answers": {},
+  "completed_image_ids": [],
+  "assignment_group": "group_e"
+}

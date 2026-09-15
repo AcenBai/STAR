@@ -1,0 +1,45 @@
+{
+  "version": 3,
+  "groups": {
+    "group_a": {
+      "label": "Group A",
+      "image_count": 2513,
+      "shared_image_count": 500,
+      "exclusive_image_count": 2013,
+      "assigned_user_id": null,
+      "assigned_at": null
+    },
+    "group_b": {
+      "label": "Group B",
+      "image_count": 2513,
+      "shared_image_count": 500,
+      "exclusive_image_count": 2013,
+      "assigned_user_id": null,
+      "assigned_at": null
+    },
+    "group_c": {
+      "label": "Group C",
+      "image_count": 2513,
+      "shared_image_count": 500,
+      "exclusive_image_count": 2013,
+      "assigned_user_id": null,
+      "assigned_at": null
+    },
+    "group_d": {
+      "label": "Group D",
+      "image_count": 2513,
+      "shared_image_count": 500,
+      "exclusive_image_count": 2013,
+      "assigned_user_id": null,
+      "assigned_at": null
+    },
+    "group_e": {
+      "label": "Group E",
+      "image_count": 2513,
+      "shared_image_count": 500,
+      "exclusive_image_count": 2013,
+      "assigned_user_id": null,
+      "assigned_at": null
+    }
+  }
+}

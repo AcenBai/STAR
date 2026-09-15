@@ -1,0 +1,12 @@
+{
+  "user_id": "ChatGPT",
+  "user_type": "mllm",
+  "display_name": "ChatGPT",
+  "model": "",
+  "created_at": "2026-09-12T18:55:35.755338+00:00",
+  "updated_at": "2026-09-15T15:25:37.488483+00:00",
+  "stage": "q1",
+  "current_image_id": "r2seg_0dcc1e9d6f769bf8",
+  "current_answers": {},
+  "completed_image_ids": []
+}

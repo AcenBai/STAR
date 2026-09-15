@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "groups": {
+    "group_a": {
+      "label": "Group A",
+      "image_count": 2113,
+      "assigned_user_id": "radiologist_1",
+      "assigned_at": "2026-09-13T12:49:06.337885+00:00"
+    },
+    "group_b": {
+      "label": "Group B",
+      "image_count": 2113,
+      "assigned_user_id": "radiologist_2",
+      "assigned_at": "2026-09-13T12:49:52.543492+00:00"
+    },
+    "group_c": {
+      "label": "Group C",
+      "image_count": 2113,
+      "assigned_user_id": "radiologist_3",
+      "assigned_at": "2026-09-13T12:50:23.089765+00:00"
+    },
+    "group_d": {
+      "label": "Group D",
+      "image_count": 2113,
+      "assigned_user_id": "radiologist_4",
+      "assigned_at": "2026-09-13T12:50:43.571532+00:00"
+    },
+    "group_e": {
+      "label": "Group E",
+      "image_count": 2113,
+      "assigned_user_id": "radiologist_5",
+      "assigned_at": "2026-09-13T12:50:56.948070+00:00"
+    }
+  }
+}
