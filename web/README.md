@@ -27,6 +27,7 @@ Generate the frozen MLLM benchmark definition with:
 
 ```bash
 python3 web/generate_mllm_split.py
+python3 web/generate_mllm_prompts.py
 ```
 
 `assignments/mllm_split.json` contains all 10,565 images that sg2162 marked
@@ -34,6 +35,12 @@ python3 web/generate_mllm_split.py
 inclusion rule. MLLM users receive only this split. Human users continue to
 receive the complete manifest. The generator validates that all 3,000 unique
 radiologist-assignment images are a subset of the MLLM benchmark.
+
+`assignments/mllm_prompts.json` freezes the English Q1-Q4 wording, exact choice
+order, output fields, and the Q3 choice matrix. MLLMs must answer sequentially:
+their own Q1 region and Q2 lymph-node answers determine the choices and context
+shown for Q3, matching the web interface. The specification also lists inputs
+that must remain hidden to prevent label leakage.
 
 The browser UI asks Q1 region, Q2 site, and an image-quality check. The old
 ground-truth confirmation question was removed to avoid label leakage. Images are

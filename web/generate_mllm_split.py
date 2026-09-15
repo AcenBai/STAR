@@ -58,6 +58,7 @@ def main() -> None:
     output = {
         "version": 1,
         "name": "STAR MLLM benchmark",
+        "prompt_spec": "assignments/mllm_prompts.json",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "ordering": "manifests/images.json order filtered by inclusion rule",
         "source": {

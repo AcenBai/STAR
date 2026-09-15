@@ -1,7 +1,8 @@
 {
   "version": 1,
   "name": "STAR MLLM benchmark",
-  "generated_at": "2026-09-15T15:24:10.637485+00:00",
+  "prompt_spec": "assignments/mllm_prompts.json",
+  "generated_at": "2026-09-15T15:45:44.015611+00:00",
   "ordering": "manifests/images.json order filtered by inclusion rule",
   "source": {
     "annotator": "sg2162",
