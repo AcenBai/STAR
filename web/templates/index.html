@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/app.css">
   </head>
   <body>
-    <main class="app-shell">
+      <main class="app-shell">
       <section class="topbar">
         <div>
           <h1>STAR Annotation</h1>
@@ -16,8 +16,33 @@
         <div class="user-chip" id="activeUser">No user</div>
       </section>
 
-      <section class="login-panel" id="loginPanel">
-        <div class="login-grid">
+        <section class="login-panel" id="loginPanel">
+          <section class="quick-start" aria-labelledby="quickStartTitle">
+            <h2 id="quickStartTitle">Quick Start</h2>
+            <div class="quick-start-grid">
+              <div>
+                <h3>Returning Users</h3>
+                <p>Select your account from the list below to resume where you left off.</p>
+              </div>
+              <div>
+                <h3>New Users</h3>
+                <ol>
+                  <li>Enter a unique User ID.</li>
+                  <li>Choose Human, MLLM, or Radiologist as instructed.</li>
+                  <li>Add a model name or note if needed, then select <strong>Start / Resume</strong>.</li>
+                </ol>
+              </div>
+              <div>
+                <h3>Annotation Workflow</h3>
+                <p>Answer each image in order: Q1 Region → Q2 Lymph Node → Q3 Site → Q4 Image Quality.</p>
+                <p>Choose one option and submit each answer. Progress is saved automatically.</p>
+              </div>
+            </div>
+            <p class="radiologist-note">
+              <strong>Radiologists:</strong> Before starting, confirm your assigned Radiologist ID with the study administrator. Always use that same ID for every session. Do not select or enter another radiologist’s ID, as this will mix annotation records between participants.
+            </p>
+          </section>
+          <div class="login-grid">
           <label>
             User ID
             <input id="userId" autocomplete="username" placeholder="e.g. sg2162 or gpt4v_run01">
