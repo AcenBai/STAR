@@ -1,0 +1,13 @@
+[Unit]
+Description=Create a daily STAR runtime-data backup
+After=local-fs.target
+ConditionPathIsDirectory=/opt/STAR
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/star-backup
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

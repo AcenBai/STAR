@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly BACKUP_DIR="/var/backups/star"
+readonly KEEP_COUNT=5
+
+install -d -m 0700 "$BACKUP_DIR"
+
+if [[ "$(realpath "$BACKUP_DIR")" != "/var/backups/star" ]]; then
+  echo "Refusing to use unexpected backup directory: $BACKUP_DIR" >&2
+  exit 1
+fi
+
+readonly STAMP="$(date '+%Y%m%d-%H%M%S')"
+readonly ARCHIVE="$BACKUP_DIR/star-$STAMP.tar.gz"
+readonly TEMP_ARCHIVE="$ARCHIVE.tmp"
+
+cleanup() {
+  rm -f -- "$TEMP_ARCHIVE"
+}
+trap cleanup EXIT
+
+readonly -a SOURCES=(
+  "opt/STAR/users"
+  "opt/STAR/answers"
+  "opt/STAR/assignments"
+  "opt/STAR/manifests"
+  "opt/STAR/questions"
+  "etc/systemd/system/star.service"
+  "etc/nginx/sites-available/star"
+)
+
+for source in "${SOURCES[@]}"; do
+  if [[ ! -e "/$source" ]]; then
+    echo "Required backup source is missing: /$source" >&2
+    exit 1
+  fi
+done
+
+tar -C / -czf "$TEMP_ARCHIVE" "${SOURCES[@]}"
+mv -- "$TEMP_ARCHIVE" "$ARCHIVE"
+sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+
+mapfile -d '' -t archives < <(
+  find "$BACKUP_DIR" -maxdepth 1 -type f -name 'star-*.tar.gz' \
+    -printf '%T@ %p\0' | sort -z -nr | cut -z -d ' ' -f 2-
+)
+
+if (( ${#archives[@]} > KEEP_COUNT )); then
+  for old_archive in "${archives[@]:KEEP_COUNT}"; do
+    if [[ "$old_archive" == "$BACKUP_DIR"/star-*.tar.gz ]]; then
+      rm -f -- "$old_archive" "$old_archive.sha256"
+    else
+      echo "Refusing to remove unexpected path: $old_archive" >&2
+      exit 1
+    fi
+  done
+fi
+
+trap - EXIT
+printf 'Created %s (%s bytes); retained %s most recent backups.\n' \
+  "$ARCHIVE" "$(stat -c '%s' "$ARCHIVE")" "$KEEP_COUNT"

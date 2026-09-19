@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# STAR runtime state is backed up separately from source control.
+/users/*.json
+/answers/*.jsonl
+/assignments/group_registry.json
