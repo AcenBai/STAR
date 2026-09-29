@@ -254,6 +254,11 @@ function renderTask(task) {
   } else if (task.stage === "q2") {
     el.questionTitle.textContent = "Q3. Site";
     el.questionText.textContent = `Which site is the tumor highlighted in red located in? Region: ${task.answers.q1_region}; lymph node: ${task.answers.q_lymph_node}. Choose only one.`;
+    const scrollHint = document.createElement("div");
+    scrollHint.className = "scroll-hint";
+    scrollHint.setAttribute("role", "note");
+    scrollHint.textContent = "↓ 滚动鼠标查看更多选项 ↓";
+    el.choiceList.appendChild(scrollHint);
     for (const site of task.q2_choices || []) {
       el.choiceList.appendChild(choice("answer", site));
     }
