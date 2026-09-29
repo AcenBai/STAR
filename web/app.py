@@ -49,6 +49,9 @@ RADIOLOGIST_GROUPS = tuple(f"group_{chr(code)}" for code in range(ord("a"), ord(
 SPECIALIST_GROUPS = {"radiologist": RADIOLOGIST_GROUPS}
 VALID_USER_TYPES = GENERAL_USER_TYPES | set(SPECIALIST_GROUPS)
 ASSIGNMENT_LOCK = threading.Lock()
+MANIFEST_CACHE_LOCK = threading.Lock()
+_MANIFEST_CACHE_KEY = None
+_MANIFEST_CACHE = None
 
 
 class NoAvailableGroupError(ValueError):
@@ -65,9 +68,12 @@ def image_dirs_for_data_dir(data_dir: Path) -> list[tuple[str, Path]]:
 
 
 def configure_data_dir(data_dir: str | Path) -> None:
-    global DATA_DIR, IMAGE_DIRS
+    global DATA_DIR, IMAGE_DIRS, _MANIFEST_CACHE_KEY, _MANIFEST_CACHE
     DATA_DIR = Path(data_dir).expanduser().resolve()
     IMAGE_DIRS = image_dirs_for_data_dir(DATA_DIR)
+    with MANIFEST_CACHE_LOCK:
+        _MANIFEST_CACHE_KEY = None
+        _MANIFEST_CACHE = None
 
 
 configure_data_dir(DEFAULT_DATA_DIR)
@@ -484,10 +490,27 @@ def build_manifest() -> list[dict]:
 
 
 def load_manifest() -> list[dict]:
-    manifest = read_json(MANIFEST_PATH, None)
-    if manifest is None:
-        manifest = build_manifest()
-    return remap_manifest_image_paths(manifest)
+    global _MANIFEST_CACHE_KEY, _MANIFEST_CACHE
+    with MANIFEST_CACHE_LOCK:
+        try:
+            stat = MANIFEST_PATH.stat()
+        except FileNotFoundError:
+            manifest = build_manifest()
+            stat = MANIFEST_PATH.stat()
+        else:
+            manifest = None
+
+        cache_key = (stat.st_mtime_ns, stat.st_size, str(DATA_DIR))
+        if _MANIFEST_CACHE_KEY == cache_key and _MANIFEST_CACHE is not None:
+            return _MANIFEST_CACHE
+
+        if manifest is None:
+            manifest = read_json(MANIFEST_PATH, None)
+        if manifest is None:
+            manifest = build_manifest()
+        _MANIFEST_CACHE = remap_manifest_image_paths(manifest)
+        _MANIFEST_CACHE_KEY = cache_key
+        return _MANIFEST_CACHE
 
 
 def load_q2_sites() -> dict:
@@ -650,12 +673,26 @@ def save_user(user: dict) -> None:
 
 def list_users() -> list[dict]:
     users = []
+    public_fields = (
+        "user_id",
+        "user_type",
+        "display_name",
+        "model",
+        "assignment_group",
+    )
     if USERS_DIR.exists():
         for path in sorted(USERS_DIR.glob("*.json")):
             try:
-                users.append(read_json(path, {}))
+                user = read_json(path, {})
             except json.JSONDecodeError:
                 continue
+            if not user.get("user_id"):
+                continue
+            users.append({
+                field: user[field]
+                for field in public_fields
+                if field in user
+            })
     return users
 
 

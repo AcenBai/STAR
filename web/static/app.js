@@ -424,7 +424,7 @@ async function loadKnownUsers() {
         user.user_type === "radiologist" && phaseOneTwoGroups.has(user.assignment_group)),
     },
     {
-      title: "Radiologist · Phase 3",
+      title: "Radiologist · Phase 1–3",
       users: data.users.filter((user) =>
         user.user_type === "radiologist" && !phaseOneTwoGroups.has(user.assignment_group)),
     },
@@ -536,9 +536,11 @@ el.answerForm.addEventListener("submit", submitAnswer);
 
 async function init() {
   try {
-    await loadSummary();
-    await loadAssignmentAvailability();
-    await loadKnownUsers();
+    await Promise.all([
+      loadSummary(),
+      loadAssignmentAvailability(),
+      loadKnownUsers(),
+    ]);
     if (state.userId) {
       el.userId.value = state.userId;
     }
