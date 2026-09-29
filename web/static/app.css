@@ -167,10 +167,48 @@ button:disabled {
 }
 
 .known-users {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+.known-user-group {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.known-user-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.known-user-group-header h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.known-user-group-header span {
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.known-user-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
 }
 
 .assignment-help {
@@ -213,7 +251,7 @@ button:disabled {
   font-size: 12px;
 }
 
-.known-users button {
+.known-user-buttons button {
   min-height: 32px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -416,6 +454,10 @@ h2 {
     grid-template-columns: 1fr;
   }
 
+  .known-users {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .question-pane {
     border-left: 0;
     border-top: 1px solid var(--line);
@@ -425,5 +467,11 @@ h2 {
     height: auto;
     min-height: 0;
     aspect-ratio: 3 / 2;
+  }
+}
+
+@media (max-width: 600px) {
+  .known-users {
+    grid-template-columns: 1fr;
   }
 }

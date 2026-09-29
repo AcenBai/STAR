@@ -405,17 +405,53 @@ async function loadKnownUsers() {
   if (!data.users.length) {
     return;
   }
-  for (const user of data.users) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = `${user.user_id} (${user.user_type || "human"})`;
-    btn.addEventListener("click", () => {
-      el.userId.value = user.user_id;
-      el.userType.value = user.user_type || "human";
-      el.modelName.value = user.model || "";
-      startUser();
-    });
-    el.knownUsers.appendChild(btn);
+
+  const phaseOneTwoGroups = new Set([
+    "group_a", "group_b", "group_c", "group_d", "group_e",
+  ]);
+  const sections = [
+    {
+      title: "Human",
+      users: data.users.filter((user) => (user.user_type || "human") === "human"),
+    },
+    {
+      title: "MLLM",
+      users: data.users.filter((user) => user.user_type === "mllm"),
+    },
+    {
+      title: "Radiologist · Phase 1–2",
+      users: data.users.filter((user) =>
+        user.user_type === "radiologist" && phaseOneTwoGroups.has(user.assignment_group)),
+    },
+    {
+      title: "Radiologist · Phase 3",
+      users: data.users.filter((user) =>
+        user.user_type === "radiologist" && !phaseOneTwoGroups.has(user.assignment_group)),
+    },
+  ];
+
+  for (const section of sections) {
+    const panel = document.createElement("section");
+    panel.className = "known-user-group";
+    panel.innerHTML = `<div class="known-user-group-header"><h3>${section.title}</h3><span>${section.users.length}</span></div>`;
+    const buttons = document.createElement("div");
+    buttons.className = "known-user-buttons";
+    section.users.sort((left, right) =>
+      left.user_id.localeCompare(right.user_id, undefined, { numeric: true, sensitivity: "base" }));
+    for (const user of section.users) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = user.user_id;
+      btn.addEventListener("click", () => {
+        el.userId.value = user.user_id;
+        el.userType.value = user.user_type || "human";
+        el.modelName.value = user.model || "";
+        startUser();
+      });
+      buttons.appendChild(btn);
+    }
+    panel.appendChild(buttons);
+    el.knownUsers.appendChild(panel);
   }
 }
 
