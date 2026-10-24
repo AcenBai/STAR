@@ -392,6 +392,30 @@ button:disabled {
   gap: 14px;
 }
 
+.answer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+#backBtn {
+  border: 1px solid var(--line);
+  background: var(--choice);
+  color: var(--ink);
+}
+
+#backBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #e8f5f1;
+}
+
+.navigation-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 h2 {
   margin: 0;
   font-size: 18px;

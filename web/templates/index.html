@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>STAR Annotation</title>
-    <link rel="stylesheet" href="/static/app.css">
+    <link rel="stylesheet" href="/static/app.css?v=20261025-back">
   </head>
   <body>
       <main class="app-shell">
@@ -36,6 +36,7 @@
                 <h3>Annotation Workflow</h3>
                 <p>Answer each image in order: Q1 Region → Q2 Lymph Node → Q3 Site → Q4 Image Quality.</p>
                 <p>Choose one option and submit each answer. Progress is saved automatically.</p>
+                <p>Use Back to revise earlier questions within the current image. Submitting Q4 completes the image.</p>
               </div>
             </div>
             <p class="radiologist-note">
@@ -118,7 +119,11 @@
             <h2 id="questionTitle"></h2>
             <p id="questionText"></p>
             <div id="choiceList" class="choice-list"></div>
-            <button id="submitBtn" type="submit">Submit</button>
+            <div class="answer-actions">
+              <button id="backBtn" type="button" disabled>← Back</button>
+              <button id="submitBtn" type="submit">Submit</button>
+            </div>
+            <p class="navigation-help">Back is available within this image only, until you submit Q4.</p>
           </form>
 
           <div class="status" id="status"></div>
@@ -126,6 +131,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20261025-back"></script>
   </body>
 </html>

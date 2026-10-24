@@ -49,6 +49,8 @@ RADIOLOGIST_GROUPS = tuple(f"group_{chr(code)}" for code in range(ord("a"), ord(
 SPECIALIST_GROUPS = {"radiologist": RADIOLOGIST_GROUPS}
 VALID_USER_TYPES = GENERAL_USER_TYPES | set(SPECIALIST_GROUPS)
 ASSIGNMENT_LOCK = threading.Lock()
+USER_LOCKS_LOCK = threading.Lock()
+USER_LOCKS = {}
 MANIFEST_CACHE_LOCK = threading.Lock()
 _MANIFEST_CACHE_KEY = None
 _MANIFEST_CACHE = None
@@ -56,6 +58,15 @@ _MANIFEST_CACHE = None
 
 class NoAvailableGroupError(ValueError):
     pass
+
+
+class TaskConflictError(ValueError):
+    pass
+
+
+def user_state_lock(user_id: str):
+    with USER_LOCKS_LOCK:
+        return USER_LOCKS.setdefault(slug_user_id(user_id), threading.RLock())
 
 
 def image_dirs_for_data_dir(data_dir: Path) -> list[tuple[str, Path]]:
@@ -851,6 +862,8 @@ def public_task(user: dict, manifest: list[dict]) -> dict:
         "image_url": f"/image/{current_id}",
         "dataset": item["dataset"],
         "stage": user.get("stage", "q1"),
+        "task_revision": user.get("task_revision", 0),
+        "can_go_back": previous_question_stage(user) is not None,
         "answers": user.get("current_answers", {}),
         "completed": completed,
         "total": total,
@@ -880,18 +893,46 @@ def public_task(user: dict, manifest: list[dict]) -> dict:
     return payload
 
 
+def previous_question_stage(user: dict) -> str | None:
+    image_id = user.get("current_image_id")
+    if not image_id or image_id in user.get("completed_image_ids", []):
+        return None
+    stage = user.get("stage", "q1")
+    if stage not in STAGES[1:4]:
+        return None
+    return STAGES[STAGES.index(stage) - 1]
+
+
+def go_back_question(user: dict) -> None:
+    previous = previous_question_stage(user)
+    if previous is None:
+        raise ValueError("You can only go back within the current image, from Q2, Q3, or Q4.")
+    user["stage"] = previous
+
+
+def clear_later_answers(answers: dict, field: str, value: str) -> None:
+    # Keep previous selections when revisiting an unchanged answer. A changed
+    # upstream answer invalidates the dependent answers and must be reconfirmed.
+    fields = ["q1_region", "q_lymph_node", "q2_site", "q4_quality_issue"]
+    if answers.get(field) != value:
+        for later_field in fields[fields.index(field) + 1:]:
+            answers.pop(later_field, None)
+
+
 def advance_after_answer(user: dict, item: dict, stage: str, answer: dict) -> None:
     answers = user.setdefault("current_answers", {})
     if stage == "q1":
         q1_region = answer.get("q1_region")
         if q1_region not in REGIONS:
             raise ValueError("Q1 answer must be Chest, Abdomen, Pelvis, or Others.")
+        clear_later_answers(answers, "q1_region", q1_region)
         answers["q1_region"] = q1_region
         user["stage"] = "q_lymph_node"
     elif stage == "q_lymph_node":
         q_lymph_node = str(answer.get("q_lymph_node", "")).strip()
         if q_lymph_node not in LYMPH_NODE_CHOICES:
             raise ValueError("Lymph node answer must be Yes, No, or Unsure.")
+        clear_later_answers(answers, "q_lymph_node", q_lymph_node)
         answers["q_lymph_node"] = q_lymph_node
         user["stage"] = "q2"
     elif stage == "q2":
@@ -900,6 +941,7 @@ def advance_after_answer(user: dict, item: dict, stage: str, answer: dict) -> No
         choices = filtered_q2_choices(q1_region, answers.get("q_lymph_node"))
         if q2_site not in choices:
             raise ValueError("Q2 answer is not valid for the selected region.")
+        clear_later_answers(answers, "q2_site", q2_site)
         answers["q2_site"] = q2_site
         user["stage"] = "q4"
     elif stage == "q4":
@@ -966,11 +1008,13 @@ class StarHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/current":
             user_id = parse_qs(parsed.query).get("user_id", [""])[0]
-            user = load_user(user_id)
-            if user is None:
-                self.send_json({"error": "Unknown user."}, HTTPStatus.NOT_FOUND)
-                return
-            self.send_json(public_task(user, load_manifest()))
+            with user_state_lock(user_id):
+                user = load_user(user_id)
+                if user is None:
+                    self.send_json({"error": "Unknown user."}, HTTPStatus.NOT_FOUND)
+                    return
+                task = public_task(user, load_manifest())
+            self.send_json(task)
             return
         if path == "/api/stats":
             user_id = parse_qs(parsed.query).get("user_id", [""])[0]
@@ -1014,7 +1058,7 @@ class StarHandler(BaseHTTPRequestHandler):
                 requested_type = str(data.get("user_type", "human")).strip().lower()
                 if requested_type not in VALID_USER_TYPES:
                     raise ValueError("Invalid user type.")
-                with ASSIGNMENT_LOCK:
+                with ASSIGNMENT_LOCK, user_state_lock(user_id):
                     user = load_user(user_id)
                     registry = None
                     if user is None:
@@ -1041,74 +1085,14 @@ class StarHandler(BaseHTTPRequestHandler):
                     save_user(user)
                     if registry is not None:
                         write_json(GROUP_REGISTRY_PATH, registry)
-                self.send_json({"user": user, "task": public_task(user, load_manifest())})
+                    task = public_task(user, load_manifest())
+                self.send_json({"user": user, "task": task})
                 return
 
-            if parsed.path == "/api/answer":
-                manifest = load_manifest()
-                lookup = image_lookup(manifest)
-                user_id = data.get("user_id", "")
-                user = load_user(user_id)
-                if user is None:
-                    raise ValueError("Unknown user.")
-                ensure_current_task(user, manifest)
-                image_id = data.get("image_id")
-                stage = data.get("stage")
-                eligible_lookup = image_lookup(manifest_for_user(user, manifest))
-                if image_id not in eligible_lookup:
-                    raise ValueError("Submitted image is outside this user's assignment.")
-                if image_id != user.get("current_image_id"):
-                    raise ValueError("Submitted image does not match current task.")
-                if stage != user.get("stage"):
-                    raise ValueError("Submitted stage does not match current task.")
-                item = lookup[image_id]
-                assignment = assignment_metadata(user, image_id)
-                before = dict(user.get("current_answers", {}))
-                advance_after_answer(user, item, stage, data)
-                user["updated_at"] = utc_now()
-                save_user(user)
-                event = {
-                    "timestamp": utc_now(),
-                    "user_id": user["user_id"],
-                    "user_type": user.get("user_type", "human"),
-                    "image_id": image_id,
-                    "dataset": item["dataset"],
-                    "stage": "complete" if stage == "q4" else stage,
-                    "answer": data,
-                    "answers_before_stage": before,
-                }
-                event.update(assignment)
-                if stage == "q1":
-                    event["q1_region"] = data["q1_region"]
-                elif stage == "q_lymph_node":
-                    event["q1_region"] = before.get("q1_region")
-                    event["q_lymph_node"] = data["q_lymph_node"]
-                elif stage == "q2":
-                    event["q1_region"] = before.get("q1_region")
-                    event["q_lymph_node"] = before.get("q_lymph_node")
-                    event["q2_site"] = data["q2_site"]
-                elif stage == "q4":
-                    gt_region = q1_region_for_site(item["gt_site"])
-                    gt_q2_site = canonical_site(item["gt_site"])
-                    gt_lymph_node = is_lymph_node_site(item["gt_site"])
-                    q1_region = before.get("q1_region")
-                    q_lymph_node = before.get("q_lymph_node")
-                    q2_site = before.get("q2_site")
-                    event["q1_region"] = before.get("q1_region")
-                    event["q_lymph_node"] = before.get("q_lymph_node")
-                    event["q2_site"] = before.get("q2_site")
-                    event["q4_quality_issue"] = data["q4_quality_issue"]
-                    event["q1_correct"] = q1_region == gt_region
-                    event["q_lymph_node_correct"] = {
-                        "Yes": True,
-                        "No": False,
-                        "Unsure": None,
-                    }.get(q_lymph_node) == gt_lymph_node if q_lymph_node != "Unsure" else None
-                    event["q2_correct"] = canonical_site(q2_site) == gt_q2_site
-                    event["gt_site"] = item["gt_site"]
-                    event["raw_tracking_id"] = item["raw_tracking_id"]
-                append_jsonl(answer_path(user["user_id"]), event)
-                self.send_json({"ok": True, "task": public_task(user, manifest)})
+            if parsed.path in {"/api/answer", "/api/back"}:
+                with user_state_lock(str(data.get("user_id", ""))):
+                    result = self.update_task(data, go_back=parsed.path == "/api/back")
+                self.send_json(result)
                 return
 
             if parsed.path == "/api/rebuild-manifest":
@@ -1122,10 +1106,90 @@ class StarHandler(BaseHTTPRequestHandler):
                 {"error": str(exc), "code": "no_available_group"},
                 HTTPStatus.CONFLICT,
             )
+        except TaskConflictError as exc:
+            self.send_json({"error": str(exc), "code": "task_conflict"}, HTTPStatus.CONFLICT)
         except ValueError as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except json.JSONDecodeError:
             self.send_json({"error": "Invalid JSON body."}, HTTPStatus.BAD_REQUEST)
+
+    def update_task(self, data: dict, go_back: bool = False) -> dict:
+        manifest = load_manifest()
+        lookup = image_lookup(manifest)
+        user_id = data.get("user_id", "")
+        user = load_user(user_id)
+        if user is None:
+            raise ValueError("Unknown user.")
+        if data.get("image_id") in user.get("completed_image_ids", []):
+            raise TaskConflictError("This image has already been submitted. Refresh to continue.")
+        ensure_current_task(user, manifest)
+        image_id = data.get("image_id")
+        stage = data.get("stage")
+        eligible_lookup = image_lookup(manifest_for_user(user, manifest))
+        if image_id not in eligible_lookup:
+            raise ValueError("Submitted image is outside this user's assignment.")
+        if image_id != user.get("current_image_id"):
+            raise TaskConflictError("This image is no longer current. Refresh to continue.")
+        if stage != user.get("stage"):
+            raise TaskConflictError("This question has changed in another tab. Refresh to continue.")
+        if "task_revision" in data and data["task_revision"] != user.get("task_revision", 0):
+            raise TaskConflictError("This task has changed in another tab. Refresh to continue.")
+        item = lookup[image_id]
+        assignment = assignment_metadata(user, image_id)
+        before = dict(user.get("current_answers", {}))
+        if go_back:
+            go_back_question(user)
+        else:
+            advance_after_answer(user, item, stage, data)
+        user["task_revision"] = user.get("task_revision", 0) + 1
+        user["updated_at"] = utc_now()
+        save_user(user)
+        event = {
+            "timestamp": utc_now(),
+            "user_id": user["user_id"],
+            "user_type": user.get("user_type", "human"),
+            "image_id": image_id,
+            "dataset": item["dataset"],
+            "stage": "back" if go_back else "complete" if stage == "q4" else stage,
+            "task_revision": user["task_revision"],
+            "answer": data,
+            "answers_before_stage": before,
+        }
+        event.update(assignment)
+        if go_back:
+            event["from_stage"] = stage
+            event["to_stage"] = user["stage"]
+        elif stage == "q1":
+            event["q1_region"] = data["q1_region"]
+        elif stage == "q_lymph_node":
+            event["q1_region"] = before.get("q1_region")
+            event["q_lymph_node"] = data["q_lymph_node"]
+        elif stage == "q2":
+            event["q1_region"] = before.get("q1_region")
+            event["q_lymph_node"] = before.get("q_lymph_node")
+            event["q2_site"] = data["q2_site"]
+        elif stage == "q4":
+            gt_region = q1_region_for_site(item["gt_site"])
+            gt_q2_site = canonical_site(item["gt_site"])
+            gt_lymph_node = is_lymph_node_site(item["gt_site"])
+            q1_region = before.get("q1_region")
+            q_lymph_node = before.get("q_lymph_node")
+            q2_site = before.get("q2_site")
+            event["q1_region"] = before.get("q1_region")
+            event["q_lymph_node"] = before.get("q_lymph_node")
+            event["q2_site"] = before.get("q2_site")
+            event["q4_quality_issue"] = data["q4_quality_issue"]
+            event["q1_correct"] = q1_region == gt_region
+            event["q_lymph_node_correct"] = {
+                "Yes": True,
+                "No": False,
+                "Unsure": None,
+            }.get(q_lymph_node) == gt_lymph_node if q_lymph_node != "Unsure" else None
+            event["q2_correct"] = canonical_site(q2_site) == gt_q2_site
+            event["gt_site"] = item["gt_site"]
+            event["raw_tracking_id"] = item["raw_tracking_id"]
+        append_jsonl(answer_path(user["user_id"]), event)
+        return {"ok": True, "task": public_task(user, manifest)}
 
 
 def parse_args() -> argparse.Namespace:

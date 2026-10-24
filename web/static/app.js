@@ -2,6 +2,7 @@ const state = {
   userId: localStorage.getItem("star_user_id") || "",
   task: null,
   imageId: null,
+  busy: false,
 };
 
 const el = {
@@ -43,6 +44,7 @@ const el = {
   questionText: document.querySelector("#questionText"),
   choiceList: document.querySelector("#choiceList"),
   submitBtn: document.querySelector("#submitBtn"),
+  backBtn: document.querySelector("#backBtn"),
   status: document.querySelector("#status"),
 };
 
@@ -192,6 +194,9 @@ function setStage(stage) {
 
 function renderTask(task) {
   state.task = task;
+  const backLabel = { q_lymph_node: "Q1", q2: "Q2", q4: "Q3" }[task.stage];
+  el.backBtn.textContent = backLabel ? `← Back to ${backLabel}` : "← Back";
+  setTaskBusy(state.busy);
   el.accuracyPanel.classList.toggle("hidden", task.show_accuracy === false);
   const assignmentName = task.assignment_group
     ? (task.assignment_label || task.assignment_group.replaceAll("_", " "))
@@ -234,7 +239,6 @@ function renderTask(task) {
     ? `${task.phase_completed} / ${task.phase_total} in this phase`
     : `${task.completed} / ${task.total} complete`;
   el.progressBar.style.width = `${task.total ? (task.completed / task.total) * 100 : 0}%`;
-  el.submitBtn.disabled = false;
   setStage(task.stage);
   setAccuracyVisibility(task.stage);
   el.choiceList.innerHTML = "";
@@ -269,6 +273,14 @@ function renderTask(task) {
       el.choiceList.appendChild(choice("answer", issue));
     }
   }
+  const answerField = {
+    q1: "q1_region", q_lymph_node: "q_lymph_node", q2: "q2_site", q4: "q4_quality_issue",
+  }[task.stage];
+  for (const input of el.choiceList.querySelectorAll("input[name='answer']")) {
+    input.checked = input.value === task.answers[answerField];
+    input.disabled = state.busy;
+  }
+  el.choiceList.scrollTop = 0;
   setStatus(task.phase_transition
     ? "Phase 1 complete. Continuing automatically to Phase 2."
     : "Autosave is active after every submission.");
@@ -498,9 +510,52 @@ async function refreshCurrent() {
   renderTask(task);
 }
 
+function setTaskBusy(busy) {
+  state.busy = busy;
+  el.submitBtn.disabled = busy || !state.task || state.task.done;
+  el.backBtn.disabled = busy || !state.task?.can_go_back || state.task.done;
+  for (const input of el.choiceList.querySelectorAll("input")) {
+    input.disabled = busy;
+  }
+}
+
+async function handleTaskError(error) {
+  if (error.code === "task_conflict") {
+    try {
+      await refreshCurrent();
+    } catch (refreshError) {
+      setStatus(refreshError.message, true);
+      return;
+    }
+  }
+  setStatus(error.message, true);
+}
+
+async function goBackQuestion() {
+  if (state.busy || !state.task?.can_go_back || state.task.done) return;
+  setTaskBusy(true);
+  setStatus("Returning to the previous question...");
+  try {
+    const data = await api("/api/back", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: state.userId,
+        image_id: state.task.image_id,
+        stage: state.task.stage,
+        task_revision: state.task.task_revision,
+      }),
+    });
+    renderTask(data.task);
+  } catch (error) {
+    await handleTaskError(error);
+  } finally {
+    setTaskBusy(false);
+  }
+}
+
 async function submitAnswer(event) {
   event.preventDefault();
-  if (!state.task || state.task.done) return;
+  if (state.busy || !state.task || state.task.done) return;
   const selected = el.answerForm.querySelector("input[name='answer']:checked");
   if (!selected) {
     setStatus("Choose one answer before submitting.", true);
@@ -511,6 +566,7 @@ async function submitAnswer(event) {
     user_id: state.userId,
     image_id: state.task.image_id,
     stage: state.task.stage,
+    task_revision: state.task.task_revision,
   };
   if (state.task.stage === "q1") {
     payload.q1_region = selected.value;
@@ -522,7 +578,7 @@ async function submitAnswer(event) {
     payload.q4_quality_issue = selected.value;
   }
 
-  el.submitBtn.disabled = true;
+  setTaskBusy(true);
   setStatus("Saving...");
   try {
     const data = await api("/api/answer", {
@@ -531,13 +587,15 @@ async function submitAnswer(event) {
     });
     renderTask(data.task);
   } catch (error) {
-    el.submitBtn.disabled = false;
-    setStatus(error.message, true);
+    await handleTaskError(error);
+  } finally {
+    setTaskBusy(false);
   }
 }
 
 el.startBtn.addEventListener("click", startUser);
 el.answerForm.addEventListener("submit", submitAnswer);
+el.backBtn.addEventListener("click", goBackQuestion);
 
 async function init() {
   try {

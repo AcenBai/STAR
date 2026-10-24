@@ -21,6 +21,25 @@ Outputs:
 - `users/{user_id}.json`: user type, resume state, completed image IDs.
 - `answers/{user_id}.jsonl`: one autosaved answer event per submitted stage.
 
+## Back within the current image
+
+Q2, Q3, and Q4 have a Back button that returns exactly one question within the
+current image. Q1 and completed images cannot go back. Submitted selections are
+prefilled when revisited. Changing Q1 or Q2 clears dependent later answers;
+unchanged answers remain available for reconfirmation. Submitting Q4 completes
+the image once and advances to the next assigned image or study phase.
+
+`POST /api/back` uses the same `user_id`, `image_id`, `stage`, and optional
+`task_revision` as `POST /api/answer`. Current clients send the revision to reject
+outdated requests from other tabs; older clients remain compatible. Per-user
+locks serialize answer, back, resume, and current-task requests.
+
+The append-only answer log includes `stage: "back"` navigation events and any
+resubmitted stage events. Existing records are preserved. Count progress and
+accuracy using `stage: "complete"` records (one final record per image), not
+total log lines divided by four. Revisiting earlier questions does not add
+completed images or accuracy observations.
+
 ## MLLM benchmark
 
 Generate the frozen MLLM benchmark definition with:
