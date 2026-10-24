@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>STAR Annotation</title>
-    <link rel="stylesheet" href="/static/app.css?v=20261025-back">
+    <link rel="stylesheet" href="/static/app.css?v=20261025-image">
   </head>
   <body>
       <main class="app-shell">
@@ -71,7 +71,11 @@
         <div class="image-pane">
           <div class="image-header">
             <span id="imageCounter">Image</span>
-            <span id="datasetBadge">Dataset</span>
+            <div class="image-tools">
+              <span id="imageStatus" class="image-status" role="status" aria-live="polite"></span>
+              <button id="reloadImageBtn" type="button" disabled title="Reload this image. Your answers stay unchanged.">Reload image</button>
+              <span id="datasetBadge">Dataset</span>
+            </div>
           </div>
           <img id="taskImage" alt="Tumor overlay">
         </div>
@@ -131,6 +135,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20261025-back"></script>
+    <script src="/static/app.js?v=20261025-image"></script>
   </body>
 </html>

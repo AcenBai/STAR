@@ -276,12 +276,45 @@ button:disabled {
 
 .image-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.image-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#reloadImageBtn {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#reloadImageBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #e8f5f1;
+}
+
+.image-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.image-status.error {
+  color: var(--warn);
 }
 
 #taskImage {

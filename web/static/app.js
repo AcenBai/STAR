@@ -2,6 +2,7 @@ const state = {
   userId: localStorage.getItem("star_user_id") || "",
   task: null,
   imageId: null,
+  imageRequest: 0,
   busy: false,
 };
 
@@ -22,6 +23,8 @@ const el = {
   imageCounter: document.querySelector("#imageCounter"),
   datasetBadge: document.querySelector("#datasetBadge"),
   taskImage: document.querySelector("#taskImage"),
+  reloadImageBtn: document.querySelector("#reloadImageBtn"),
+  imageStatus: document.querySelector("#imageStatus"),
   progressLabel: document.querySelector("#progressLabel"),
   progressBar: document.querySelector("#progressBar"),
   tabQ1: document.querySelector("#tabQ1"),
@@ -156,6 +159,44 @@ function setStatus(message, isError = false) {
   el.status.classList.toggle("error", isError);
 }
 
+function setImageStatus(message, isError = false) {
+  el.imageStatus.textContent = message;
+  el.imageStatus.classList.toggle("error", isError);
+}
+
+function loadTaskImage(task, reload = false) {
+  const imageId = task.image_id;
+  const requestId = ++state.imageRequest;
+  const url = new URL(task.image_url, window.location.href);
+  if (reload) url.searchParams.set("reload", `${Date.now()}-${requestId}`);
+
+  // Each request owns its image node, so late events from a replaced image
+  // cannot mark a new image as loaded or failed. The answer form is untouched.
+  const image = document.createElement("img");
+  image.id = "taskImage";
+  image.alt = el.taskImage.alt;
+  const isCurrent = () => state.imageId === imageId
+    && state.imageRequest === requestId && el.taskImage === image;
+  image.addEventListener("load", () => {
+    if (isCurrent()) setImageStatus("Loaded");
+  });
+  image.addEventListener("error", () => {
+    if (isCurrent()) setImageStatus("Load failed. Retry.", true);
+  });
+  const previous = el.taskImage;
+  previous.replaceWith(image);
+  el.taskImage = image;
+  previous.removeAttribute("src");
+  el.reloadImageBtn.disabled = false;
+  setImageStatus(reload ? "Reloading…" : "Loading…");
+  image.src = url.href;
+}
+
+function reloadCurrentImage() {
+  if (!state.task || state.task.done) return;
+  loadTaskImage(state.task, true);
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -213,7 +254,11 @@ function renderTask(task) {
   el.overallProgressLabel.classList.toggle("hidden", !isPhased);
   if (task.done) {
     el.workspace.classList.remove("hidden");
+    state.imageId = null;
+    state.imageRequest += 1;
     el.taskImage.removeAttribute("src");
+    el.reloadImageBtn.disabled = true;
+    setImageStatus("");
     el.imageCounter.textContent = "Complete";
     el.datasetBadge.textContent = "Done";
     el.progressLabel.textContent = `${task.completed} / ${task.total} complete`;
@@ -229,7 +274,7 @@ function renderTask(task) {
   el.workspace.classList.remove("hidden");
   if (state.imageId !== task.image_id) {
     state.imageId = task.image_id;
-    el.taskImage.src = task.image_url;
+    loadTaskImage(task);
   }
   el.imageCounter.textContent = isPhased
     ? `Phase ${phaseNumber} · Image ${task.phase_completed + 1} / ${task.phase_total}`
@@ -596,6 +641,7 @@ async function submitAnswer(event) {
 el.startBtn.addEventListener("click", startUser);
 el.answerForm.addEventListener("submit", submitAnswer);
 el.backBtn.addEventListener("click", goBackQuestion);
+el.reloadImageBtn.addEventListener("click", reloadCurrentImage);
 
 async function init() {
   try {

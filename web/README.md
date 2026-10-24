@@ -40,6 +40,39 @@ accuracy using `stage: "complete"` records (one final record per image), not
 total log lines divided by four. Revisiting earlier questions does not add
 completed images or accuracy observations.
 
+## Image reload and delivery
+
+`Reload image` requests only the current image with a unique `reload` query
+parameter to bypass its previous browser cache entry. It never reloads the page,
+calls a task API, changes the selected answer, or saves an answer/navigation event.
+It is available while an image is loading or has failed, with no retry limit.
+Submitting answers remains available during image loading. A replaced image owns
+its event handlers, so a late load/error event cannot affect the next task image.
+
+PNG bytes, dimensions, opaque image IDs, assignment manifests, and answer data are
+unchanged. Image responses use `Cache-Control: private, max-age=3600`, ETag, and
+Last-Modified. API responses and other files do not receive this cache policy.
+
+Standalone Python delivery is the default. To offload file transmission to Nginx:
+
+1. Adapt/install `ops/nginx/star.conf` as the site's Nginx configuration, preserving
+   the existing server/proxy settings. Validate with `nginx -t` before reload.
+2. Verify the Nginx worker can read the existing `/srv/star-data/` PNGs.
+3. Install `ops/nginx/star-image-offload.conf` as
+   `/etc/systemd/system/star.service.d/image-offload.conf`, reload systemd, and
+   restart the application during a quiet interval.
+
+Python validates the opaque ID and resolved PNG path, then uses X-Accel-Redirect
+to the internal `/_star_image_files/` location. Nginx serves the original bytes,
+handles conditional requests/ranges, and consumes the internal filename header.
+Direct browser requests to this location must return 404; filenames/GT labels
+must not appear in public response headers. No proxy cache is enabled.
+
+Rollback: unset/remove the offload environment override and restart Python to
+restore standalone image delivery. The internal Nginx location can remain until
+its previous site configuration is restored and smoothly reloaded. Do not restore
+or reset user/answer/assignment files when rolling back program code.
+
 ## MLLM benchmark
 
 Generate the frozen MLLM benchmark definition with:

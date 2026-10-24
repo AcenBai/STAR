@@ -4,13 +4,16 @@ import argparse
 import hashlib
 import json
 import mimetypes
+import os
 import re
+import shutil
 import threading
 from datetime import datetime, timezone
+from email.utils import formatdate, parsedate_to_datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +32,9 @@ DEFAULT_DATA_DIR = Path("/Users/sg2162/Datasets/CancerDatasets/STAR")
 KNOWN_DATASETS = ("CPTAC", "EAY131", "R2Seg")
 DATA_DIR = DEFAULT_DATA_DIR
 IMAGE_DIRS = []
+IMAGE_OFFLOAD_ENABLED = os.environ.get("STAR_IMAGE_OFFLOAD") == "1"
+IMAGE_INTERNAL_PREFIX = "/_star_image_files/"
+IMAGE_CACHE_CONTROL = "private, max-age=3600"
 
 REGIONS = ["Chest", "Abdomen", "Pelvis", "Others"]
 LYMPH_NODE_CHOICES = ["Yes", "No", "Unsure"]
@@ -987,6 +993,55 @@ class StarHandler(BaseHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
+    def send_image(self, path: Path) -> None:
+        try:
+            path = path.resolve(strict=True)
+            relative = path.relative_to(DATA_DIR.resolve())
+        except (OSError, ValueError):
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        # Only render files in the configured dataset image directories.
+        if (len(relative.parts) != 3 or relative.parts[0] not in KNOWN_DATASETS
+                or relative.parts[1] != "vis_check" or path.suffix.lower() != ".png"
+                or not path.is_file()):
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if IMAGE_OFFLOAD_ENABLED:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("X-Accel-Redirect", IMAGE_INTERNAL_PREFIX + quote(relative.as_posix(), safe="/"))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+
+        # Standalone deployments still serve identical files and support private
+        # browser caching. Nginx supplies these headers when offload is enabled.
+        with path.open("rb") as source:
+            stat = os.fstat(source.fileno())
+            etag = f'"{int(stat.st_mtime):x}-{stat.st_size:x}"'
+            not_modified = False
+            if_none_match = self.headers.get("If-None-Match")
+            if if_none_match is not None:
+                tags = [tag.strip().removeprefix("W/") for tag in if_none_match.split(",")]
+                not_modified = "*" in tags or etag in tags
+            elif self.headers.get("If-Modified-Since"):
+                try:
+                    modified_since = parsedate_to_datetime(self.headers["If-Modified-Since"])
+                    if modified_since.tzinfo is None:
+                        modified_since = modified_since.replace(tzinfo=timezone.utc)
+                    not_modified = int(stat.st_mtime) <= modified_since.timestamp()
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            self.send_response(HTTPStatus.NOT_MODIFIED if not_modified else HTTPStatus.OK)
+            self.send_header("Cache-Control", IMAGE_CACHE_CONTROL)
+            self.send_header("ETag", etag)
+            self.send_header("Last-Modified", formatdate(stat.st_mtime, usegmt=True))
+            if not not_modified:
+                self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(stat.st_size))
+            self.end_headers()
+            if not not_modified:
+                shutil.copyfileobj(source, self.wfile)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -1043,7 +1098,7 @@ class StarHandler(BaseHTTPRequestHandler):
             if item is None:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
-            self.send_file(Path(item["image_path"]), "image/png")
+            self.send_image(Path(item["image_path"]))
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
