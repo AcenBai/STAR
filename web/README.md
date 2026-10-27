@@ -113,6 +113,59 @@ no IP addresses or answer fields. Keep it under the existing Nginx log rotation
 policy. These are server-side transfer observations; a successful server write
 alone does not prove that the browser decoded or displayed the whole image.
 
+### Browser diagnostics and one-image lookahead
+
+`public_task` includes `next_image` with only the next opaque ID and image URL.
+The lookahead function copies the completion list in memory to determine what
+would follow the current image. It never saves that copy, advances the real user,
+or writes answer events. It follows the human manifest, frozen MLLM split and each
+radiologist's frozen group, including Phase 1 -> Phase 2/3 boundaries.
+
+The browser waits until the displayed image has loaded, then waits 250 ms and
+downloads exactly one next image with low fetch priority. Loading that hidden
+image never starts another prefetch. On a matching next task it promotes the same
+image node, including an in-flight request, instead of starting a second download.
+A different account, manual reload or study completion cancels obsolete lookahead.
+Prefetch errors fall back to ordinary loading when that image becomes current.
+No automatic image retry or submission gate is added. Answer selections and task
+revisions are not part of the image transport module.
+
+Browser reports distinguish `display`, `reload` and `prefetch`, with outcomes
+`loaded`, `error`, `cancelled` and a single `slow` observation after 15 seconds.
+A slow observation leaves the request running. A prefetched request and its later
+display have separate observations; do not sum them as independent downloads.
+`prefetch_used` identifies promotion of a ready or in-flight image. Elapsed time
+measures that observation; available Resource Timing fields describe the resource
+transfer (which may have begun earlier during prefetch). Zero browser byte counts
+can mean cache reuse or unavailable information, rather than an empty image.
+
+Reports use a best-effort beacon/fetch to `/api/image-metrics`, outside the task API
+flow. They include account ID, opaque image ID, observation ID, browser/server
+timestamps and bounded timing/byte fields. They contain no choices, answers,
+ground truth, original filenames or IP addresses. Logging failures are ignored.
+The endpoint never loads or saves a user or answer record. It rejects bodies over
+4096 bytes and drops unknown fields.
+
+To enable persistent diagnostics, install `ops/nginx/star-image-metrics.conf` as
+`/etc/systemd/system/star.service.d/image-metrics.conf` and restart the app during
+a quiet interval. It sets `STAR_IMAGE_METRICS_LOG=/opt/monitor/star-image-client.jsonl`.
+Install `ops/nginx/star-image-client.logrotate` as `/etc/logrotate.d/star-image-client`:
+daily rotation retains five rotated logs, with compression. The app also caps the
+active diagnostic log at 10 MiB; after the cap it drops diagnostics until rotation.
+Without the environment setting, valid reports are accepted and discarded.
+Existing Nginx image timings remain at `/var/log/nginx/star-images.log`.
+
+Validate against disposable users only:
+
+```bash
+node --test tests/image_reload.test.cjs tests/image_prefetch.test.cjs
+python3 -B -m unittest discover -s tests -v
+```
+
+Rollback code/config only. Keep the user, answer, assignment, manifest, original
+image and PNG-cache files intact. Previously opened pages continue to work; they
+receive the new browser code after the user opens a new page or safely refreshes.
+
 ## MLLM benchmark
 
 Generate the frozen MLLM benchmark definition with:

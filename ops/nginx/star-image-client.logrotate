@@ -1,0 +1,9 @@
+/opt/monitor/star-image-client.jsonl {
+    daily
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root root
+}

@@ -1,55 +1,7 @@
 // Run the actual browser script with deterministic image events and no network.
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
 const { test } = require('node:test');
-
-function page() {
-  const requests = [];
-  const apiRequests = [];
-  class Element {
-    constructor(tag = 'div') {
-      this.tag = tag; this.alt = 'Tumor overlay'; this.disabled = false;
-      this.textContent = ''; this.style = {}; this.listeners = {};
-      this.classList = { toggle() {}, add() {}, remove() {} };
-      this.children = [];
-    }
-    addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
-    emit(type) { for (const fn of this.listeners[type] || []) fn(); }
-    replaceWith(node) { this.replacedBy = node; }
-    removeAttribute(name) { if (name === 'src') this._src = ''; }
-    set src(value) { this._src = value; requests.push(value); }
-    get src() { return this._src || ''; }
-    querySelectorAll() { return this.children; }
-    querySelector() { return this.children.find(node => node.checked) || null; }
-    appendChild(node) { this.children.push(node); }
-  }
-  const elements = new Map();
-  const context = vm.createContext({
-    URL, Date, console,
-    window: { location: { href: 'http://star.test/' } },
-    localStorage: { getItem() { return ''; }, setItem() {} },
-    document: {
-      querySelector(selector) {
-        if (!elements.has(selector)) elements.set(selector, new Element());
-        return elements.get(selector);
-      },
-      createElement(tag) { return new Element(tag); },
-    },
-    fetch(url) { apiRequests.push(url); throw new Error('Unexpected task API request'); },
-  });
-  const source = fs.readFileSync(path.join(__dirname, '../web/static/app.js'), 'utf8');
-  vm.runInContext(source.replace(/\ninit\(\);\s*$/, '\n'), context);
-  const api = vm.runInContext('({ state, el, loadTaskImage, reloadCurrentImage, renderTask })', context);
-  const task = { image_id: 'image_a', image_url: '/image/image_a', stage: 'q2',
-    answers: { q1_region: 'Chest', q_lymph_node: 'No' }, completed: 12, total: 500,
-    task_revision: 8, can_go_back: true, done: false };
-  api.state.task = task; api.state.imageId = task.image_id;
-  const selected = new Element('input'); selected.value = 'Lung'; selected.checked = true;
-  api.el.choiceList.children = [selected];
-  return { ...api, requests, apiRequests, selected, task };
-}
+const { page } = require('./image_test_page.cjs');
 
 for (const stage of ['q_lymph_node', 'q2', 'q4']) {
   test(`reload keeps ${stage} selections, progress, stage and submit state`, () => {

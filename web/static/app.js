@@ -164,32 +164,18 @@ function setImageStatus(message, isError = false) {
   el.imageStatus.classList.toggle("error", isError);
 }
 
-function loadTaskImage(task, reload = false) {
-  const imageId = task.image_id;
-  const requestId = ++state.imageRequest;
-  const url = new URL(task.image_url, window.location.href);
-  if (reload) url.searchParams.set("reload", `${Date.now()}-${requestId}`);
+const imageDelivery = new ImageDelivery({
+  getTask: () => state.task,
+  getUserId: () => state.userId,
+  getImage: () => el.taskImage,
+  setImage: (image) => { el.taskImage.replaceWith(image); el.taskImage = image; },
+  setStatus: setImageStatus,
+});
 
-  // Each request owns its image node, so late events from a replaced image
-  // cannot mark a new image as loaded or failed. The answer form is untouched.
-  const image = document.createElement("img");
-  image.id = "taskImage";
-  image.alt = el.taskImage.alt;
-  const isCurrent = () => state.imageId === imageId
-    && state.imageRequest === requestId && el.taskImage === image;
-  image.addEventListener("load", () => {
-    if (isCurrent()) setImageStatus("Loaded");
-  });
-  image.addEventListener("error", () => {
-    if (isCurrent()) setImageStatus("Load failed. Retry.", true);
-  });
-  const previous = el.taskImage;
-  previous.replaceWith(image);
-  el.taskImage = image;
-  previous.removeAttribute("src");
+function loadTaskImage(task, reload = false) {
+  state.imageRequest += 1;
   el.reloadImageBtn.disabled = false;
-  setImageStatus(reload ? "Reloading…" : "Loading…");
-  image.src = url.href;
+  imageDelivery.show(task, reload);
 }
 
 function reloadCurrentImage() {
@@ -256,6 +242,7 @@ function renderTask(task) {
     el.workspace.classList.remove("hidden");
     state.imageId = null;
     state.imageRequest += 1;
+    imageDelivery.clear();
     el.taskImage.removeAttribute("src");
     el.reloadImageBtn.disabled = true;
     setImageStatus("");

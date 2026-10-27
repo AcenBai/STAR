@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import mimetypes
 import os
 import re
@@ -35,6 +36,9 @@ IMAGE_DIRS = []
 IMAGE_OFFLOAD_ENABLED = os.environ.get("STAR_IMAGE_OFFLOAD") == "1"
 IMAGE_INTERNAL_PREFIX = "/_star_image_files/"
 IMAGE_CACHE_CONTROL = "private, max-age=3600"
+IMAGE_METRICS_LOG = Path(os.environ["STAR_IMAGE_METRICS_LOG"]) if os.environ.get("STAR_IMAGE_METRICS_LOG") else None
+IMAGE_METRICS_LOCK = threading.Lock()
+IMAGE_METRICS_MAX_BYTES = 10 * 1024 * 1024
 
 REGIONS = ["Chest", "Abdomen", "Pelvis", "Others"]
 LYMPH_NODE_CHOICES = ["Yes", "No", "Unsure"]
@@ -804,6 +808,80 @@ def first_uncompleted_image(manifest: list[dict], completed: list[str]) -> str |
     return None
 
 
+def next_image_preview(user: dict, manifest: list[dict]) -> dict | None:
+    """Read-only lookahead, including Phase 1 -> Phase 2/3 transitions.
+
+    The copied completion list is used only to determine the following image.
+    Never call ensure_current_task/save_user or generate answer events here.
+    """
+    current_id = user.get("current_image_id")
+    if not current_id:
+        return None
+    preview_user = {**user, "completed_image_ids": [*user.get("completed_image_ids", []), current_id]}
+    eligible = manifest_for_user(preview_user, manifest)
+    next_id = first_uncompleted_image(eligible, preview_user["completed_image_ids"])
+    return {"image_id": next_id, "image_url": f"/image/{next_id}"} if next_id else None
+
+
+def record_image_metric(data: dict) -> None:
+    """Accept bounded diagnostic fields only; never read/write a doctor's state."""
+    if not isinstance(data, dict):
+        raise ValueError("Expected an image metric object.")
+    row = {"server_time": utc_now(), "version": 1}
+    for key, pattern in [("user_id", r"[A-Za-z0-9_.-]{1,128}"),
+                         ("image_id", r"[A-Za-z0-9_-]{1,128}"),
+                         ("request_id", r"[A-Za-z0-9_-]{1,128}")]:
+        value = data.get(key)
+        if not isinstance(value, str) or not re.fullmatch(pattern, value):
+            raise ValueError(f"Invalid {key}.")
+        row[key] = value
+    if data.get("kind") not in {"display", "reload", "prefetch"}:
+        raise ValueError("Invalid image metric kind.")
+    if data.get("outcome") not in {"loaded", "error", "slow", "cancelled"}:
+        raise ValueError("Invalid image metric outcome.")
+    row.update(kind=data["kind"], outcome=data["outcome"], prefetch_used=data.get("prefetch_used") is True)
+    client_time = data.get("client_time")
+    if not isinstance(client_time, str) or len(client_time) > 40:
+        raise ValueError("Invalid client timestamp.")
+    try:
+        parsed = datetime.fromisoformat(client_time.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("Missing timezone.")
+    except ValueError:
+        raise ValueError("Invalid client timestamp.") from None
+    row["client_time"] = parsed.astimezone(timezone.utc).isoformat()
+    def number(value, maximum):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= maximum:
+            raise ValueError("Invalid image timing value.")
+        return round(value, 3)
+    row["elapsed_ms"] = number(data.get("elapsed_ms"), 86400000)
+    resource = data.get("resource")
+    if resource is not None:
+        if not isinstance(resource, dict):
+            raise ValueError("Invalid resource timing.")
+        values = {}
+        for key in ("duration_ms", "ttfb_ms", "download_ms"):
+            if key in resource:
+                values[key] = number(resource[key], 86400000)
+        for key in ("transfer_bytes", "encoded_bytes", "decoded_bytes"):
+            if key in resource:
+                values[key] = int(number(resource[key], 1024 ** 3))
+        protocol = resource.get("protocol")
+        if isinstance(protocol, str) and re.fullmatch(r"[A-Za-z0-9./_-]{0,32}", protocol):
+            values["protocol"] = protocol
+        row["resource"] = values
+    # Unknown client fields (including answers/URLs/GT) are intentionally omitted.
+    if IMAGE_METRICS_LOG is not None:
+        try:
+            with IMAGE_METRICS_LOCK:
+                if IMAGE_METRICS_LOG.exists() and IMAGE_METRICS_LOG.stat().st_size >= IMAGE_METRICS_MAX_BYTES:
+                    return
+                with IMAGE_METRICS_LOG.open("a", encoding="utf-8") as output:
+                    output.write(json.dumps(row, allow_nan=False) + "\n")
+        except OSError:
+            pass  # Diagnostics must never prevent annotation or image loading.
+
+
 def ensure_current_task(user: dict, manifest: list[dict]) -> dict:
     manifest = manifest_for_user(user, manifest)
     completed = user.setdefault("completed_image_ids", [])
@@ -827,6 +905,7 @@ def ensure_current_task(user: dict, manifest: list[dict]) -> dict:
 
 
 def public_task(user: dict, manifest: list[dict]) -> dict:
+    full_manifest = manifest
     user = ensure_current_task(user, manifest)
     manifest = manifest_for_user(user, manifest)
     lookup = image_lookup(manifest)
@@ -866,6 +945,7 @@ def public_task(user: dict, manifest: list[dict]) -> dict:
         "done": False,
         "image_id": current_id,
         "image_url": f"/image/{current_id}",
+        "next_image": next_image_preview(user, full_manifest),
         "dataset": item["dataset"],
         "stage": user.get("stage", "q1"),
         "task_revision": user.get("task_revision", 0),
@@ -1104,6 +1184,20 @@ class StarHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/image-metrics":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 4096:
+                    self.send_json({"error": "Image metric body must be 1-4096 bytes."}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                    return
+                record_image_metric(json.loads(self.rfile.read(length)))
+            except (ValueError, TypeError):
+                self.send_json({"error": "Invalid image metric."}, HTTPStatus.BAD_REQUEST)
+                return
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         try:
             data = self.read_body()
             if parsed.path == "/api/users":
