@@ -49,21 +49,23 @@ It is available while an image is loading or has failed, with no retry limit.
 Submitting answers remains available during image loading. A replaced image owns
 its event handlers, so a late load/error event cannot affect the next task image.
 
-PNG bytes, dimensions, opaque image IDs, assignment manifests, and answer data are
-unchanged. Image responses use `Cache-Control: private, max-age=3600`, ETag, and
+Original PNGs, dimensions, opaque image IDs, assignment manifests, and answer data
+are unchanged. Image responses use `Cache-Control: private, max-age=3600`, ETag, and
 Last-Modified. API responses and other files do not receive this cache policy.
 
 Standalone Python delivery is the default. To offload file transmission to Nginx:
 
-1. Adapt/install `ops/nginx/star.conf` as the site's Nginx configuration, preserving
-   the existing server/proxy settings. Validate with `nginx -t` before reload.
+1. Install `ops/nginx/star-image-logging.conf` in `/etc/nginx/conf.d/` (http
+   context), then adapt/install `ops/nginx/star.conf` as the site's configuration,
+   preserving the existing server/proxy settings. Validate with `nginx -t` before
+   a graceful reload.
 2. Verify the Nginx worker can read the existing `/srv/star-data/` PNGs.
 3. Install `ops/nginx/star-image-offload.conf` as
    `/etc/systemd/system/star.service.d/image-offload.conf`, reload systemd, and
    restart the application during a quiet interval.
 
 Python validates the opaque ID and resolved PNG path, then uses X-Accel-Redirect
-to the internal `/_star_image_files/` location. Nginx serves the original bytes,
+to the internal `/_star_image_files/` location. Nginx serves PNG files,
 handles conditional requests/ranges, and consumes the internal filename header.
 Direct browser requests to this location must return 404; filenames/GT labels
 must not appear in public response headers. No proxy cache is enabled.
@@ -72,6 +74,44 @@ Rollback: unset/remove the offload environment override and restart Python to
 restore standalone image delivery. The internal Nginx location can remain until
 its previous site configuration is restored and smoothly reloaded. Do not restore
 or reset user/answer/assignment files when rolling back program code.
+
+### Optional lossless PNG cache
+
+Build this once against the frozen image dataset, at low CPU priority. It uses
+only the Python standard library; no image processing dependency runs in the app:
+
+```bash
+nice -n 19 python3 -B ops/images/prepare_png_cache.py \
+  --manifest /opt/STAR/manifests/images.json --data-dir /srv/star-data \
+  --cache-root /var/cache/star-images \
+  --report /opt/monitor/star-png-cache-report.json
+```
+
+The generator checks every PNG chunk CRC, recompresses only the IDAT zlib stream,
+and checks that decompression yields exactly the same filtered image bytes. All
+other chunks, including dimensions, color information and alpha representation,
+are preserved. It verifies each written file and source stability before declaring
+success. Only smaller copies are retained, with one cache path per source image.
+Original files are never rewritten. The report includes original, delivered and
+filtered-stream SHA-256 hashes for each image.
+
+Nginx checks `/var/cache/star-images/_star_image_files/` first and falls back to
+the original PNG if no cached file exists. Both locations are internal; public
+opaque image URLs and task APIs stay unchanged. ETag, conditional requests,
+Range/If-Range and the manual `Reload image` button work for either source. An
+old original-file ETag cannot resume into the different compressed byte stream.
+No page refresh, application restart, automatic retry or task prefetch is needed.
+
+Treat these copies as disposable derived data, excluded from data backups and
+Git. Regenerate or discard affected copies before changing the frozen originals.
+To disable the cache, restore the previous Nginx site configuration and gracefully
+reload; doctors' data and the Python service do not need to change.
+
+`/var/log/nginx/star-images.log` records only opaque image requests, elapsed time,
+sent/declared byte counts, completion, upstream time and range headers. It records
+no IP addresses or answer fields. Keep it under the existing Nginx log rotation
+policy. These are server-side transfer observations; a successful server write
+alone does not prove that the browser decoded or displayed the whole image.
 
 ## MLLM benchmark
 
